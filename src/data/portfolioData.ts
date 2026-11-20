@@ -52,6 +52,7 @@ export const PORTFOLIO_ASSETS = {
   heroPortrait: '/assets/aistudio/Joyful_Monochrome_Studio_Portrait_f05c4ca5.png',
   opendeskVisual: '/src/assets/images/project_opendesk_visual_1795085503160.jpg',
   resumePdf: '/assets/aistudio/Akshat_Jain_Resume_2_7057d70e.pdf',
+  signature: '/assets/aistudio/sign_cropped.png',
 } as const;
 
 export const PROFILE = {

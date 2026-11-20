@@ -237,27 +237,23 @@ body::before {
   box-shadow: none !important;
 }
 
-/* True crystal-clear Apple Liquid Glass header capsule with curved-edge optical refraction */
+/* True Apple Liquid Glass header capsule — optics driven by applyLiquidGlass() */
 .header-glass-pill {
   position: relative;
   overflow: hidden;
   border: none;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.14) 0%,
-    rgba(255, 255, 255, 0.04) 52%,
-    rgba(255, 255, 255, 0.1) 100%
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.06) 55%,
+    rgba(255, 255, 255, 0.14) 100%
   );
   color: var(--sc-ink);
-  -webkit-backdrop-filter: blur(5px) saturate(185%) brightness(1.03);
-  backdrop-filter: blur(5px) saturate(185%) brightness(1.03);
-  backdrop-filter: url(#liquid-glass-refract) blur(2.2px) saturate(190%) brightness(1.04);
   box-shadow:
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.85),
-    inset 0 -1.5px 1.5px rgba(255, 255, 255, 0.45),
-    inset 1px 0 2px rgba(255, 255, 255, 0.35),
-    inset -1px 0 2px rgba(255, 255, 255, 0.35),
-    0 18px 40px -16px rgba(20, 20, 20, 0.24),
+    inset 0 1px 1px rgba(255, 255, 255, 0.78),
+    inset 0 -8px 20px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 20px 44px -14px rgba(20, 20, 20, 0.24),
     0 4px 12px -4px rgba(20, 20, 20, 0.08);
   transition:
     background 0.25s var(--ease),
@@ -271,8 +267,8 @@ body::before {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(110% 70% at 50% -25%, rgba(255, 255, 255, 0.48) 0%, rgba(255, 255, 255, 0.06) 52%, transparent 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, transparent 40%, transparent 78%, rgba(255, 255, 255, 0.16) 100%);
+    radial-gradient(110% 70% at 50% -25%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.06) 52%, transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, transparent 42%, transparent 78%, rgba(255, 255, 255, 0.14) 100%);
 }
 
 .header-glass-pill > * {
@@ -284,27 +280,22 @@ body::before {
 :root.dark .header-glass-pill {
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.09) 0%,
-    rgba(255, 255, 255, 0.025) 52%,
-    rgba(255, 255, 255, 0.07) 100%
+    rgba(14, 14, 22, 0.16) 0%,
+    rgba(14, 14, 22, 0.3) 100%
   );
-  -webkit-backdrop-filter: blur(5px) saturate(185%) brightness(1.08);
-  backdrop-filter: blur(5px) saturate(185%) brightness(1.08);
-  backdrop-filter: url(#liquid-glass-refract) blur(2.2px) saturate(195%) brightness(1.08);
   box-shadow:
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.38),
-    inset 0 -1.5px 1.5px rgba(255, 255, 255, 0.16),
-    inset 1px 0 2px rgba(255, 255, 255, 0.14),
-    inset -1px 0 2px rgba(255, 255, 255, 0.14),
-    0 22px 46px -14px rgba(0, 0, 0, 0.72),
-    0 4px 14px -4px rgba(0, 0, 0, 0.38);
+    inset 0 1px 1px rgba(255, 255, 255, 0.45),
+    inset 0 -8px 20px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 24px 56px -14px rgba(0, 0, 0, 0.65),
+    0 4px 14px -4px rgba(0, 0, 0, 0.35);
 }
 
 :root[data-theme="dark"] .header-glass-pill::before,
 :root.dark .header-glass-pill::before {
   background:
-    radial-gradient(110% 70% at 50% -25%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.04) 50%, transparent 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, transparent 42%, transparent 78%, rgba(255, 255, 255, 0.09) 100%);
+    radial-gradient(110% 70% at 50% -25%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 50%, transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 42%, transparent 78%, rgba(255, 255, 255, 0.08) 100%);
 }
 
 /* Staggered per-letter nav dialog card (exact match to aswinpanengal.me) */

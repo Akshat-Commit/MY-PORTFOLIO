@@ -1,55 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Ellipsis, FileText, Mail, Moon, Sun, X } from 'lucide-react';
 import { MetalFx, setCursorLightConfig, useMetalBend } from 'metal-fx';
 import { ThinkingOrb } from 'thinking-orbs';
 import { PORTFOLIO_ASSETS, PROFILE } from '../data/portfolioData';
-
-function createPillRefractionMap(width: number, height: number, bevelPx = 15): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  const img = ctx.createImageData(width, height);
-  const data = img.data;
-  const r = height / 2;
-  const leftCx = r;
-  const rightCx = width - r;
-  const cy = r;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      // Closest point on the pill's inner spine segment [(leftCx, cy) -> (rightCx, cy)]
-      const cx = Math.min(rightCx, Math.max(leftCx, x));
-      const dx = x - cx;
-      const dy = y - cy;
-      const distFromSpine = Math.hypot(dx, dy);
-      const distFromEdge = r - distFromSpine;
-
-      let nx = 0;
-      let ny = 0;
-
-      if (distFromEdge > 0 && distFromEdge < bevelPx && distFromSpine > 0.001) {
-        // Smooth convex glass rim curve: strongest refraction right at the curved bevel
-        const u = 1 - distFromEdge / bevelPx; // 0 at inner bevel boundary -> 1 at outer rim
-        const curve = u * u * (3 - 2 * u); // smoothstep
-        const mag = curve * 0.92;
-        nx = (dx / distFromSpine) * mag;
-        ny = (dy / distFromSpine) * mag;
-      }
-
-      const idx = (y * width + x) * 4;
-      data[idx] = Math.round(128 + nx * 127);
-      data[idx + 1] = Math.round(128 + ny * 127);
-      data[idx + 2] = 128;
-      data[idx + 3] = 255;
-    }
-  }
-
-  ctx.putImageData(img, 0, 0);
-  return canvas.toDataURL('image/png');
-}
+import { applyLiquidGlass } from '../utils/liquidGlass';
 
 interface FloatingHeaderProps {
   theme: 'light' | 'dark';
@@ -128,11 +82,26 @@ export const FloatingHeader: React.FC<FloatingHeaderProps> = ({
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
   const headerMetalRef = useRef<HTMLDivElement | null>(null);
-  const [refractionMapUrl, setRefractionMapUrl] = useState<string>('');
+  const headerGlassRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setCursorLightConfig({ cursor: false });
-    setRefractionMapUrl(createPillRefractionMap(348, 58, 16));
+  }, []);
+
+  useEffect(() => {
+    const el = headerGlassRef.current;
+    if (!el) return;
+    const handle = applyLiquidGlass(el, {
+      scale: -96,
+      chroma: 6,
+      border: 0.14,
+      mapBlur: 8,
+      blur: 1.8,
+      saturate: 1.65,
+      radius: 29,
+      fallbackBlur: 14,
+    });
+    return () => handle.destroy();
   }, []);
 
   useMetalBend(headerMetalRef);
@@ -170,40 +139,6 @@ export const FloatingHeader: React.FC<FloatingHeaderProps> = ({
 
   return (
     <>
-      {/* Hidden SVG optical lens filter for real curved-edge Liquid Glass refraction */}
-      {refractionMapUrl && (
-        <svg
-          aria-hidden="true"
-          width="0"
-          height="0"
-          className="fixed pointer-events-none opacity-0"
-        >
-          <defs>
-            <filter
-              id="liquid-glass-refract"
-              x="0%"
-              y="0%"
-              width="100%"
-              height="100%"
-              colorInterpolationFilters="sRGB"
-            >
-              <feImage
-                href={refractionMapUrl}
-                result="refractMap"
-                preserveAspectRatio="none"
-              />
-              <feDisplacementMap
-                in="SourceGraphic"
-                in2="refractMap"
-                scale="18"
-                xChannelSelector="R"
-                yChannelSelector="G"
-              />
-            </filter>
-          </defs>
-        </svg>
-      )}
-
       <header
         className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[348px] max-w-[calc(100%-32px)]"
         aria-label="Primary site header"
@@ -221,16 +156,24 @@ export const FloatingHeader: React.FC<FloatingHeaderProps> = ({
           className="header-metal-glass w-full"
           style={{ display: 'block', width: '100%', background: 'transparent' }}
         >
-          <div className="header-glass-pill rounded-full h-[58px] pl-5 pr-2.5 flex items-center justify-between w-full">
+          <div
+            ref={headerGlassRef}
+            className="header-glass-pill rounded-full h-[58px] pl-4 pr-2.5 flex items-center justify-between w-full"
+          >
             <a
               href="#about"
               onClick={(e) => {
                 e.preventDefault();
                 onNavigateSection('about');
               }}
-              className="text-[21px] font-semibold tracking-[-0.04em] text-[var(--sc-ink)] whitespace-nowrap shrink-0 hover:opacity-75 transition-opacity"
+              aria-label={`${PROFILE.fullName} — Back to top`}
+              className="inline-flex items-center shrink-0 hover:opacity-75 transition-opacity"
             >
-              {PROFILE.firstName}
+              <img
+                src={PORTFOLIO_ASSETS.signature}
+                alt={PROFILE.fullName}
+                className="h-[36px] w-auto object-contain block dark:invert select-none pointer-events-none"
+              />
             </a>
 
             <div className="flex items-center gap-1 shrink-0">
