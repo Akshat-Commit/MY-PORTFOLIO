@@ -74,10 +74,12 @@ body::before {
   filter: invert(1);
 }
 
-/* Focus visibility */
-:focus-visible {
-  outline: 2px solid var(--sc-ink);
-  outline-offset: 3px;
+/* Focus visibility (layered so component-level focus:outline-none utilities override cleanly) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--sc-ink);
+    outline-offset: 3px;
+  }
 }
 
 /* Editorial container — single responsive gutter, never double-padded (matches aswinpanengal.me) */

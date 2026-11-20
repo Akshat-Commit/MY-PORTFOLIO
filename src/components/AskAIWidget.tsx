@@ -282,7 +282,7 @@ export const AskAIWidget: React.FC<AskAIWidgetProps> = ({ open, onSetOpen }) => 
                   disabled={isStreaming}
                   placeholder={`Ask about ${PROFILE.firstName}...`}
                   aria-label={`Ask about ${PROFILE.firstName}`}
-                  className="flex-1 bg-transparent text-[14px] text-[#f8f7f4] placeholder:text-[#8d8c87] focus:outline-none disabled:opacity-50"
+                  className="flex-1 bg-transparent border-0 text-[14px] text-[#f8f7f4] placeholder:text-[#8d8c87] focus:outline-none focus-visible:outline-none disabled:opacity-50"
                 />
                 <button
                   type="submit"
