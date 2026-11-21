@@ -89,6 +89,31 @@ export const AskAIWidget: React.FC<AskAIWidgetProps> = ({ open, onSetOpen }) => 
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let receivedText = false;
+
+      const processEvent = (rawEvent: string) => {
+        const line = rawEvent.trim();
+        if (!line.startsWith('data:')) return;
+        const jsonStr = line.slice(5).trim();
+        if (!jsonStr) return;
+
+        const parsed = JSON.parse(jsonStr) as {
+          type: 'delta' | 'done' | 'error';
+          text?: string;
+          error?: string;
+        };
+
+        if (parsed.type === 'delta' && parsed.text) {
+          receivedText = true;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, text: m.text + parsed.text } : m
+            )
+          );
+        } else if (parsed.type === 'error') {
+          throw new Error(parsed.error || 'Unable to generate a response.');
+        }
+      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -99,33 +124,16 @@ export const AskAIWidget: React.FC<AskAIWidgetProps> = ({ open, onSetOpen }) => 
         buffer = events.pop() ?? '';
 
         for (const rawEvent of events) {
-          const line = rawEvent.trim();
-          if (!line.startsWith('data:')) continue;
-          const jsonStr = line.slice(5).trim();
-          if (!jsonStr) continue;
-
-          try {
-            const parsed = JSON.parse(jsonStr) as {
-              type: 'delta' | 'done' | 'error';
-              text?: string;
-              error?: string;
-            };
-
-            if (parsed.type === 'delta' && parsed.text) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, text: m.text + parsed.text } : m
-                )
-              );
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.error || 'Unable to generate a response.');
-            }
-          } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message !== 'Unexpected end of JSON input') {
-              throw parseErr;
-            }
-          }
+          processEvent(rawEvent);
         }
+      }
+
+      if (buffer.trim()) {
+        processEvent(buffer);
+      }
+
+      if (!receivedText) {
+        throw new Error('No response received from the AI assistant. Please try again.');
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

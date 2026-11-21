@@ -1,10 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from '@google/genai';
+
+dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,8 +63,14 @@ TONE:
 - Confident, warm, direct, engineering-literate. No buzzword fluff.
 - If asked how to contact Akshat or schedule an interview, share aj452794@gmail.com and mention the Contact section on this page.`;
 
+const MODEL_PRIMARY = 'gemini-4-hydrogen';
+const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
+const PRIMARY_COOLDOWN_MS = 5 * 60 * 1000;
+let primaryUnavailableUntil = 0;
+
 function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  dotenv.config({ override: true });
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     return null;
   }
@@ -74,6 +82,29 @@ function getGeminiClient() {
       },
     },
   });
+}
+
+function formatGeminiError(err: unknown): { status?: number; message: string } {
+  const anyErr = err as { status?: number; message?: string };
+  let status = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
+  let message =
+    err instanceof Error ? err.message : String(err || 'Unable to reach Gemini right now.');
+
+  for (let depth = 0; depth < 3; depth++) {
+    try {
+      const parsed = JSON.parse(message) as { error?: { code?: number; message?: string } };
+      if (parsed?.error?.message) {
+        status = status ?? parsed.error.code;
+        message = parsed.error.message.trim();
+        continue;
+      }
+    } catch {
+      break;
+    }
+    break;
+  }
+
+  return { status, message };
 }
 
 interface IncomingMessage {
@@ -123,38 +154,71 @@ async function startServer() {
     res.flushHeaders?.();
 
     const sendEvent = (payload: Record<string, unknown>) => {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      }
     };
 
-    try {
-      const stream = await ai.models.generateContentStream({
-        model: 'gemini-4-hydrogen',
-        contents: trimmedHistory,
-        config: {
-          systemInstruction: AKSHAT_RESUME_SYSTEM_INSTRUCTION,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
+    const modelsToTry =
+      Date.now() < primaryUnavailableUntil
+        ? [MODEL_FALLBACK]
+        : [MODEL_PRIMARY, MODEL_FALLBACK];
+
+    let emittedAnyChunk = false;
+    let lastErrorMessage = 'Unable to reach Gemini right now. Please try again.';
+
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const model = modelsToTry[i];
+      try {
+        const stream = await ai.models.generateContentStream({
+          model,
+          contents: trimmedHistory,
+          config: {
+            systemInstruction: AKSHAT_RESUME_SYSTEM_INSTRUCTION,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.LOW,
+            },
           },
-        },
-      });
+        });
 
-      for await (const chunk of stream) {
-        const responseChunk = chunk as GenerateContentResponse;
-        const delta = responseChunk.text;
-        if (delta) {
-          sendEvent({ type: 'delta', text: delta });
+        for await (const chunk of stream) {
+          const responseChunk = chunk as GenerateContentResponse;
+          const delta = responseChunk.text;
+          if (delta) {
+            emittedAnyChunk = true;
+            sendEvent({ type: 'delta', text: delta });
+          }
         }
-      }
 
-      sendEvent({ type: 'done' });
-      res.end();
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Unable to reach Gemini right now. Please try again.';
-      console.error('[/api/ask] Gemini error:', message);
-      sendEvent({ type: 'error', error: message });
-      res.end();
+        if (emittedAnyChunk) {
+          sendEvent({ type: 'done' });
+          res.end();
+          return;
+        }
+      } catch (err: unknown) {
+        const { status, message } = formatGeminiError(err);
+        lastErrorMessage = message;
+        console.error(`[/api/ask] Gemini error (${model}):`, status ?? '', message);
+
+        const isTransientOverload =
+          status === 503 ||
+          status === 429 ||
+          /UNAVAILABLE|high demand|overloaded/i.test(message);
+
+        if (model === MODEL_PRIMARY && isTransientOverload) {
+          primaryUnavailableUntil = Date.now() + PRIMARY_COOLDOWN_MS;
+        }
+
+        // Only try the fallback model if nothing has streamed yet and error is transient
+        if (!emittedAnyChunk && isTransientOverload && i < modelsToTry.length - 1) {
+          continue;
+        }
+        break;
+      }
     }
+
+    sendEvent({ type: 'error', error: lastErrorMessage });
+    res.end();
   });
 
   if (!isProduction) {
