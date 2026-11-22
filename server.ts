@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from '@google/genai';
 
 dotenv.config({ override: true });
 
@@ -14,9 +13,23 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-const AKSHAT_RESUME_SYSTEM_INSTRUCTION = `You are the personal AI portfolio assistant for Akshat Jain, speaking concisely and helpfully to recruiters, hiring managers, engineers, and collaborators visiting his website.
+const AKSHAT_RESUME_SYSTEM_INSTRUCTION = `You are the personal AI portfolio assistant for Akshat Jain, warmly welcoming visitors, recruiters, hiring managers, and engineers to his personal portfolio website.
 
-Answer strictly based on Akshat Jain's verified background below. Keep responses crisp, grounded, well-structured, and around 2-5 short sentences unless the visitor asks for deeper technical detail. Never fabricate companies, metrics, or links not listed here.
+Answer strictly based on Akshat Jain's verified background below. Never fabricate companies, metrics, or links not listed here.
+
+COMMUNICATION STYLE & TONE:
+- Be polite, welcoming, warm, and helpful. Never reply in a harsh, cold, abrupt, or dry robotic tone.
+- Speak naturally and conversationally, acting as an enthusiastic, articulate advocate for Akshat and his engineering work.
+- If asked how to contact Akshat or schedule an interview, warmly share aj452794@gmail.com, his LinkedIn (https://www.linkedin.com/in/akshatjaindevs), or refer them to the Contact section on this page.
+
+RESPONSE FORMATTING & ORGANIZATION:
+- Structure your responses neatly so they are clear, organized, and pleasant to read. Avoid dumping dense, unorganized walls of bullet points or raw technical specs.
+- When asked about a project (such as OpenDesk AI, Resona AI, or the Gmail AI Chrome Extension):
+  1. Friendly Overview: Start with a warm 1-2 sentence introduction explaining what the project is, what problem it solves, and why Akshat built it.
+  2. Key Highlights / What it does: Present 2-4 primary capabilities using clean, readable bullet points with bold titles (e.g., • **Natural-Language PC Control:** ...).
+  3. Architecture & Tech Stack: Clearly break down the engineering design (e.g., explaining the 3-agent pipeline and fallback resilience) in an organized, easy-to-digest manner.
+  4. Welcoming Wrap-Up: End with an inviting one-liner (e.g., offering to dive deeper into the architecture or explore the GitHub repository).
+- Use clean paragraph spacing between sections to keep the output well-paced and visually organized.
 
 PROFILE:
 - Name: Akshat Jain
@@ -33,17 +46,27 @@ EXPERIENCE & TRAINING:
 
 PROJECTS:
 1. OpenDesk AI (2026 – Present) | Python, Claude, Gemini, Ollama, Telegram Bot API, Multi-Agent LLMs
-   - Open-source Python tool to remotely control a Windows PC via Telegram.
-   - Architected a 3-agent pipeline: Command Parser -> Executor -> Formatter.
-   - Engineered a resilient multi-model fallback chain: Claude -> Gemini -> Ollama (local fallback).
-   - Supports semantic file search, live screenshots, and remote process management.
+   - Overview: An open-source Python tool that transforms Telegram into an intelligent, secure remote desk for Windows PCs.
+   - Core Capabilities:
+     • Natural Language OS Actions: Semantic file search across local directories, instant desktop screenshot capture, and guarded remote process start/stop.
+   - 3-Agent Architecture:
+     • Command Parser Agent: Analyzes incoming Telegram messages and maps natural-language intent into structured, typed commands.
+     • Executor Agent: Executes validated OS actions safely on the Windows host.
+     • Formatter Agent: Condenses raw output, file paths, and media into concise, human-readable Telegram responses.
+   - Multi-Model Resilience: Automatic fallback chain (Claude -> Gemini -> local Ollama) ensures commands still execute smoothly even if cloud APIs hit rate limits or go offline.
+   - Open Source: Complete codebase is openly hosted on GitHub (https://github.com/Akshat-Commit) for easy extension and self-hosting.
+
 2. Resona AI (2026 – Present) | FastAPI, React, TypeScript, Coqui XTTS-v2, Python
-   - Full-stack open-source voice cloning web app.
-   - Clones any voice from a short audio sample via Coqui XTTS-v2 with real-time playback.
-   - Built FastAPI backend with voice profile management and a React/TypeScript frontend.
+   - Overview: Full-stack open-source voice cloning web application.
+   - Core Capabilities:
+     • Voice Cloning: Clones any voice from a short audio sample via Coqui XTTS-v2 with real-time playback.
+     • Modern Stack: High-performance FastAPI backend with voice profile management and an interactive React/TypeScript frontend.
+
 3. Gmail AI Chrome Extension (2025) | Spring Boot, Llama 3, Ollama, JavaScript, Chrome Extensions API
-   - Injects an AI email-generation button directly inside Gmail's compose window via dynamic DOM detection.
-   - Spring Boot backend serves a locally hosted Llama 3 / Ollama model with production-grade CORS handling.
+   - Overview: Intelligent productivity extension that integrates context-aware AI email generation directly into Gmail.
+   - Core Capabilities:
+     • Native DOM Integration: Injects an AI drafting button directly inside Gmail's compose window via dynamic DOM detection.
+     • Secure Local Backend: Spring Boot backend serves a locally hosted Llama 3 / Ollama model with production-grade CORS handling.
 
 ACHIEVEMENTS & CERTIFICATIONS:
 - Winner (1st Place) – HackWave 2.0 Hackathon 2025 (Chameli Devi Institute of Technology, Indore): Built and live-demoed a multi-agent AI system with specialized agents for information retrieval, reasoning, and response generation; designed the coordination architecture.
@@ -57,54 +80,15 @@ TECHNICAL SKILLS:
 - Frontend: React, TypeScript, JavaScript, HTML, CSS
 - Databases: PostgreSQL, MySQL, SQLite, HQL
 - AI / ML: Claude, Gemini, Ollama, Llama 3, Coqui XTTS-v2, Multi-Agent LLM Systems, Prompt Engineering, NLP
-- Tools: Git, GitHub, Postman, Maven, VS Code, Vercel, Cursor, UiPath Studio
+- Tools: Git, GitHub, Postman, Maven, VS Code, Vercel, Cursor, UiPath Studio`;
 
-TONE:
-- Confident, warm, direct, engineering-literate. No buzzword fluff.
-- If asked how to contact Akshat or schedule an interview, share aj452794@gmail.com and mention the Contact section on this page.`;
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-const MODEL_PRIMARY = 'gemini-4-hydrogen';
-const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
-const PRIMARY_COOLDOWN_MS = 5 * 60 * 1000;
-let primaryUnavailableUntil = 0;
-
-function getGeminiClient() {
+function getGroqApiKey(): string | null {
   dotenv.config({ override: true });
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    return null;
-  }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-}
-
-function formatGeminiError(err: unknown): { status?: number; message: string } {
-  const anyErr = err as { status?: number; message?: string };
-  let status = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
-  let message =
-    err instanceof Error ? err.message : String(err || 'Unable to reach Gemini right now.');
-
-  for (let depth = 0; depth < 3; depth++) {
-    try {
-      const parsed = JSON.parse(message) as { error?: { code?: number; message?: string } };
-      if (parsed?.error?.message) {
-        status = status ?? parsed.error.code;
-        message = parsed.error.message.trim();
-        continue;
-      }
-    } catch {
-      break;
-    }
-    break;
-  }
-
-  return { status, message };
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  return apiKey || null;
 }
 
 interface IncomingMessage {
@@ -127,20 +111,25 @@ async function startServer() {
       return;
     }
 
-    const ai = getGeminiClient();
-    if (!ai) {
+    const apiKey = getGroqApiKey();
+    if (!apiKey) {
       res.status(503).json({
-        error: 'Gemini API key is not configured in the environment. Please check Settings > Secrets.',
+        error: 'Groq API key is not configured. Please set GROQ_API_KEY in your environment.',
       });
       return;
     }
 
     const trimmedHistory = messages
       .slice(-10)
-      .filter((m) => (m.role === 'user' || m.role === 'model') && typeof m.text === 'string' && m.text.trim().length > 0)
+      .filter(
+        (m) =>
+          (m.role === 'user' || m.role === 'model') &&
+          typeof m.text === 'string' &&
+          m.text.trim().length > 0
+      )
       .map((m) => ({
-        role: m.role,
-        parts: [{ text: m.text.trim().slice(0, 1500) }],
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: m.text.trim().slice(0, 1500),
       }));
 
     if (trimmedHistory.length === 0) {
@@ -159,66 +148,102 @@ async function startServer() {
       }
     };
 
-    const modelsToTry =
-      Date.now() < primaryUnavailableUntil
-        ? [MODEL_FALLBACK]
-        : [MODEL_PRIMARY, MODEL_FALLBACK];
-
     let emittedAnyChunk = false;
-    let lastErrorMessage = 'Unable to reach Gemini right now. Please try again.';
 
-    for (let i = 0; i < modelsToTry.length; i++) {
-      const model = modelsToTry[i];
-      try {
-        const stream = await ai.models.generateContentStream({
-          model,
-          contents: trimmedHistory,
-          config: {
-            systemInstruction: AKSHAT_RESUME_SYSTEM_INSTRUCTION,
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.LOW,
-            },
-          },
-        });
+    try {
+      const groqResponse = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: AKSHAT_RESUME_SYSTEM_INSTRUCTION },
+            ...trimmedHistory,
+          ],
+          stream: true,
+          temperature: 0.7,
+          max_tokens: 1024,
+        }),
+      });
 
-        for await (const chunk of stream) {
-          const responseChunk = chunk as GenerateContentResponse;
-          const delta = responseChunk.text;
-          if (delta) {
-            emittedAnyChunk = true;
-            sendEvent({ type: 'delta', text: delta });
+      if (!groqResponse.ok) {
+        const errBody = await groqResponse.text();
+        let errorMessage = `Groq API error (${groqResponse.status})`;
+        try {
+          const parsed = JSON.parse(errBody);
+          if (parsed?.error?.message) {
+            errorMessage = parsed.error.message;
+          }
+        } catch {}
+        console.error(`[/api/ask] Groq error:`, errorMessage);
+        sendEvent({ type: 'error', error: errorMessage });
+        res.end();
+        return;
+      }
+
+      const reader = groqResponse.body as AsyncIterable<Uint8Array>;
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      for await (const chunk of reader) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.slice(5).trim();
+          if (jsonStr === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              emittedAnyChunk = true;
+              sendEvent({ type: 'delta', text: delta });
+            }
+          } catch {}
+        }
+      }
+
+      // Process remaining buffer
+      if (buffer.trim()) {
+        const trimmed = buffer.trim();
+        if (trimmed.startsWith('data:')) {
+          const jsonStr = trimmed.slice(5).trim();
+          if (jsonStr !== '[DONE]') {
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) {
+                emittedAnyChunk = true;
+                sendEvent({ type: 'delta', text: delta });
+              }
+            } catch {}
           }
         }
-
-        if (emittedAnyChunk) {
-          sendEvent({ type: 'done' });
-          res.end();
-          return;
-        }
-      } catch (err: unknown) {
-        const { status, message } = formatGeminiError(err);
-        lastErrorMessage = message;
-        console.error(`[/api/ask] Gemini error (${model}):`, status ?? '', message);
-
-        const isTransientOverload =
-          status === 503 ||
-          status === 429 ||
-          /UNAVAILABLE|high demand|overloaded/i.test(message);
-
-        if (model === MODEL_PRIMARY && isTransientOverload) {
-          primaryUnavailableUntil = Date.now() + PRIMARY_COOLDOWN_MS;
-        }
-
-        // Only try the fallback model if nothing has streamed yet and error is transient
-        if (!emittedAnyChunk && isTransientOverload && i < modelsToTry.length - 1) {
-          continue;
-        }
-        break;
       }
-    }
 
-    sendEvent({ type: 'error', error: lastErrorMessage });
-    res.end();
+      if (emittedAnyChunk) {
+        sendEvent({ type: 'done' });
+      } else {
+        sendEvent({
+          type: 'error',
+          error: 'No response received from the AI assistant. Please try again.',
+        });
+      }
+      res.end();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to reach AI right now. Please try again.';
+      console.error(`[/api/ask] Groq error:`, message);
+      sendEvent({ type: 'error', error: message });
+      res.end();
+    }
   });
 
   if (!isProduction) {

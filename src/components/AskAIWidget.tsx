@@ -15,6 +15,199 @@ interface ChatMessage {
   text: string;
 }
 
+const renderInlineMarkdown = (text: string): React.ReactNode => {
+  const regex = /(\*\*.*?\*\*|`[^`]+`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s)]+)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**') && token.length >= 4) {
+      nodes.push(
+        <strong key={match.index} className="font-semibold text-[#f8f7f4]">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith('`') && token.endsWith('`') && token.length >= 2) {
+      nodes.push(
+        <code
+          key={match.index}
+          className="px-1.5 py-0.5 rounded bg-white/12 text-[#f5f4f0] text-[12px] font-mono border border-white/10"
+        >
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith('[') && match[2] && match[3]) {
+      nodes.push(
+        <a
+          key={match.index}
+          href={match[3]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#93c5fd] hover:text-[#bfdbfe] underline underline-offset-2 transition-colors break-words font-medium"
+        >
+          {match[2]}
+        </a>
+      );
+    } else if (token.startsWith('http')) {
+      nodes.push(
+        <a
+          key={match.index}
+          href={token}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#93c5fd] hover:text-[#bfdbfe] underline underline-offset-2 transition-colors break-all font-medium"
+        >
+          {token}
+        </a>
+      );
+    } else {
+      nodes.push(token);
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : text;
+};
+
+const FormattedAIMessage: React.FC<{ text: string }> = ({ text }) => {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let currentList: { ordered: boolean; items: string[] } | null = null;
+  let currentParagraph: string[] = [];
+
+  const flushParagraph = (key: string) => {
+    if (currentParagraph.length > 0) {
+      const fullText = currentParagraph.join(' ').trim();
+      if (fullText) {
+        elements.push(
+          <p key={key} className="text-[13.5px] leading-[1.65] text-[#eceae5]">
+            {renderInlineMarkdown(fullText)}
+          </p>
+        );
+      }
+      currentParagraph = [];
+    }
+  };
+
+  const flushList = (key: string) => {
+    if (currentList && currentList.items.length > 0) {
+      if (currentList.ordered) {
+        elements.push(
+          <ol key={key} className="space-y-2 my-2.5 pl-0.5">
+            {currentList.items.map((item, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-[1.6]">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/10 text-[11px] font-mono text-[#f8f7f4] shrink-0 mt-0.5">
+                  {i + 1}
+                </span>
+                <div className="flex-1 text-[#eceae5]">{renderInlineMarkdown(item)}</div>
+              </li>
+            ))}
+          </ol>
+        );
+      } else {
+        elements.push(
+          <ul key={key} className="space-y-2 my-2.5 pl-0.5">
+            {currentList.items.map((item, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-[1.6]">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#f8f7f4]/80 mt-2 shrink-0" />
+                <div className="flex-1 text-[#eceae5]">{renderInlineMarkdown(item)}</div>
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      currentList = null;
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      flushParagraph(`p-${i}`);
+      flushList(`l-${i}`);
+      continue;
+    }
+
+    const headerMatch = trimmed.match(/^#{1,3}\s+(.*)$/);
+    if (headerMatch) {
+      flushParagraph(`p-${i}`);
+      flushList(`l-${i}`);
+      elements.push(
+        <div key={`h-${i}`} className="font-semibold text-[#f8f7f4] text-[14px] mt-3 mb-1 tracking-tight">
+          {renderInlineMarkdown(headerMatch[1])}
+        </div>
+      );
+      continue;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*•]\s+(.*)$/);
+    if (bulletMatch) {
+      flushParagraph(`p-${i}`);
+      if (!currentList || currentList.ordered) {
+        flushList(`l-prev-${i}`);
+        currentList = { ordered: false, items: [] };
+      }
+      currentList.items.push(bulletMatch[1]);
+      continue;
+    }
+
+    const numberedMatch = trimmed.match(/^\d+[.)]\s+(.*)$/);
+    if (numberedMatch) {
+      flushParagraph(`p-${i}`);
+      if (!currentList || !currentList.ordered) {
+        flushList(`l-prev-${i}`);
+        currentList = { ordered: true, items: [] };
+      }
+      currentList.items.push(numberedMatch[1]);
+      continue;
+    }
+
+    const isStandaloneTitle =
+      (/^\*\*[^*]+:\*\*:?$/.test(trimmed) || /^[A-Z][\w\s&–—/]+:$/.test(trimmed)) &&
+      trimmed.length < 50;
+    if (isStandaloneTitle) {
+      flushParagraph(`p-${i}`);
+      flushList(`l-${i}`);
+      const cleanTitle = trimmed.replace(/^\*\*|\*\*$/g, '');
+      elements.push(
+        <div key={`title-${i}`} className="font-semibold text-[#f8f7f4] text-[13.5px] mt-2.5 mb-1 tracking-tight">
+          {renderInlineMarkdown(cleanTitle)}
+        </div>
+      );
+      continue;
+    }
+
+    if (currentList && (rawLine.startsWith('   ') || rawLine.startsWith('\t'))) {
+      const lastIdx = currentList.items.length - 1;
+      currentList.items[lastIdx] += ' ' + trimmed;
+      continue;
+    }
+
+    if (currentList) {
+      flushList(`l-end-${i}`);
+    }
+    currentParagraph.push(trimmed);
+  }
+
+  flushParagraph(`p-final`);
+  flushList(`l-final`);
+
+  return <div className="space-y-2">{elements}</div>;
+};
+
 export const AskAIWidget: React.FC<AskAIWidgetProps> = ({ open, onSetOpen }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -240,13 +433,17 @@ export const AskAIWidget: React.FC<AskAIWidgetProps> = ({ open, onSetOpen }) => 
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[88%] rounded-[12px] px-3.5 py-2.5 whitespace-pre-wrap ${
+                      className={`max-w-[88%] rounded-[14px] px-4 py-3 ${
                         msg.role === 'user'
-                          ? 'bg-[#f8f7f4] text-[#141414] font-medium'
+                          ? 'bg-[#f8f7f4] text-[#141414] font-medium whitespace-pre-wrap'
                           : 'bg-white/[0.07] border border-white/10 text-[#f5f4f0]'
                       }`}
                     >
-                      {msg.text || (
+                      {msg.role === 'user' ? (
+                        msg.text
+                      ) : msg.text ? (
+                        <FormattedAIMessage text={msg.text} />
+                      ) : (
                         <span className="text-[#c8c7c1] inline-flex items-center gap-2">
                           <ThinkingOrb state="searching" size={20} theme="dark" />
                           <span>Thinking...</span>
